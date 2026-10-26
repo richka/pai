@@ -33,7 +33,8 @@ RAMDataParserMap = {
     ),
     0x8185: Struct(
         # 0x0185..0x01A4: partition status blocks start at 0x0195
-        "partition_status" / PartitionStatusAdapter(Bytes(32)),
+        "partition_status"
+        / PartitionStatusAdapter(Bytes(32)),
     ),
     0x800B: Struct(
         Padding(1),  # 0x000B: unfiltered AC sample - intentionally unpublished

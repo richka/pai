@@ -5,12 +5,11 @@ A095, 2026-10) or published in ParadoxAlarmInterface/pai#257 (avilleret,
 firmware build A096).
 """
 
-import pytest
 from construct import Bytes
+import pytest
 
 from paradox.hardware.digiplex import parsers
 from paradox.hardware.digiplex.adapters import (
-    PartitionStatusAdapter,
     StatusAdapter,
     publishes_tamper,
     zone_device_class,
@@ -62,7 +61,9 @@ def test_checksums_of_golden_frames_are_valid():
 def test_build_start_communication_matches_golden_init():
     """PAI's StartCommunication with source_id=0 must equal the golden INIT.
     (DGP-848 silently ignores every other source_id - live tested.)"""
-    message = parsers.StartCommunication.build(dict(fields=dict(value=dict(source_id=0))))
+    message = parsers.StartCommunication.build(
+        dict(fields=dict(value=dict(source_id=0)))
+    )
     assert message == GOLDEN_INIT
 
 
@@ -140,9 +141,7 @@ def test_parse_error_response():
 
 def test_zone_status_adapter_bits():
     """bit0 (LSB) of the first byte is zone 1 (live capture: zone 17 open)."""
-    r = StatusAdapter(Bytes(6))._decode(
-        bytes.fromhex("00 00 01 00 00 00"), None, None
-    )
+    r = StatusAdapter(Bytes(6))._decode(bytes.fromhex("00 00 01 00 00 00"), None, None)
     assert r[17] is True
     assert all(r[i] is False for i in range(1, 49) if i != 17)
 
@@ -196,9 +195,9 @@ def _partition_block(
     ("house_arm", "arm", "perimetras"),
     [
         (0x00, False, False),  # disarmed
-        (0x01, True, False),   # armed (full)          -> armed_away
-        (0x05, True, True),    # armed + stay          -> armed_home
-        (0x03, True, False),   # armed + force arm     -> armed_away
+        (0x01, True, False),  # armed (full)          -> armed_away
+        (0x05, True, True),  # armed + stay          -> armed_home
+        (0x03, True, False),  # armed + force arm     -> armed_away
     ],
 )
 def test_house_arm(house_arm, arm, perimetras):
@@ -232,8 +231,8 @@ def test_partitions_are_independent():
     ("arm_byte", "audible", "silent"),
     [
         (0x01, False, False),
-        (0x41, True, False),   # bit6 audible alarm
-        (0x21, False, True),   # bit5 silent alarm
+        (0x41, True, False),  # bit6 audible alarm
+        (0x21, False, True),  # bit5 silent alarm
     ],
 )
 def test_alarm_flags(arm_byte, audible, silent):
@@ -306,3 +305,38 @@ def test_entry_delay_flag():
         _partition_block(house_arm=0x05, house_status=0x00)
     )
     assert parsed.partition_status[1]["entry_delay"] is False
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("vaiku rytu lang.", "window"),
+        ("miegamojo langas", "window"),
+        ("vaiku pietu duz.", "vibration"),
+        ("svetaines duzis", "vibration"),
+        ("garazo vartai", "garage_door"),
+        ("fasado durys", "door"),
+        ("sirena, deze, tamp", "tamper"),
+        ("gaisras", "smoke"),
+        ("virtuve", "motion"),
+        ("miegamasis", "motion"),
+    ],
+)
+def test_zone_device_class(label, expected):
+    assert zone_device_class(label) == expected
+
+
+@pytest.mark.parametrize(
+    ("device_class", "expected"),
+    [
+        ("motion", True),
+        ("vibration", True),
+        ("tamper", True),
+        ("window", False),
+        ("door", False),
+        ("garage_door", False),
+        ("smoke", False),
+    ],
+)
+def test_publishes_tamper(device_class, expected):
+    assert publishes_tamper(device_class) is expected

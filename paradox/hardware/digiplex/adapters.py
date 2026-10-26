@@ -1,6 +1,5 @@
 """Adapters that turn Digiplex RAM bytes into ``convert_raw_status()`` values."""
 
-
 from construct import Adapter
 
 

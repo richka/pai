@@ -1,11 +1,10 @@
+from collections import defaultdict
 import inspect
 import logging
 import typing
-from collections import defaultdict
 
 from construct import Construct, Container
 
-from paradox.config import config as cfg
 from paradox.exceptions import AuthenticationFailed, StatusRequestException
 from paradox.lib.utils import sanitize_key
 

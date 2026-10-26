@@ -17,8 +17,8 @@ Differences from the EVO family:
 """
 
 from construct import (
-    BitStruct,
     BitsInteger,
+    BitStruct,
     Bytes,
     Const,
     Flag,
@@ -127,8 +127,7 @@ ReadRAM = Struct(
     "fields"
     / RawCopy(
         Struct(
-            "po"
-            / BitStruct("command" / Const(5, Nibble), "count_hi" / BitsInteger(4)),
+            "po" / BitStruct("command" / Const(5, Nibble), "count_hi" / BitsInteger(4)),
             "bus" / BitStruct("count_lo" / Flag, "bus_address" / BitsInteger(7)),
             "address" / Int16ub,
             "_not_used0" / Padding(32),
@@ -141,8 +140,7 @@ ReadRAMResponse = Struct(
     "fields"
     / RawCopy(
         Struct(
-            "po"
-            / BitStruct("command" / Const(5, Nibble), "count_hi" / BitsInteger(4)),
+            "po" / BitStruct("command" / Const(5, Nibble), "count_hi" / BitsInteger(4)),
             "bus" / BitStruct("count_lo" / Flag, "bus_address" / BitsInteger(7)),
             "address" / Int16ub,
             "data" / Bytes(32),
