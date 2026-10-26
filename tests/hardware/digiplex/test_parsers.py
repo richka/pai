@@ -293,3 +293,16 @@ def test_partition_action_command_map():
     assert parsers.PARTITION_ACTION_COMMANDS["force"] == 0x05
     assert parsers.PARTITION_ACTION_COMMANDS["disarm"] == 0x06
     assert parsers.PARTITION_ACTION_COMMANDS["beep"] == 0x08
+
+
+def test_entry_delay_flag():
+    """Bit2 of the status byte is the entry delay (keypad beeps, code needed)."""
+    parsed = RAMDataParserMap[0x8185].parse(
+        _partition_block(house_arm=0x05, house_status=0x04)
+    )
+    assert parsed.partition_status[1]["entry_delay"] is True
+
+    parsed = RAMDataParserMap[0x8185].parse(
+        _partition_block(house_arm=0x05, house_status=0x00)
+    )
+    assert parsed.partition_status[1]["entry_delay"] is False

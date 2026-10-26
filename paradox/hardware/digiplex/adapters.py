@@ -137,6 +137,7 @@ class PartitionStatusAdapter(Adapter):
                 audible_alarm=bool(arm & 0x40),
                 silent_alarm=bool(arm & 0x20),
                 exit_delay=bool(status & 0x02),
+                entry_delay=bool(status & 0x04),
             )
 
         return {index + 1: partition(index) for index in range(PARTITION_COUNT)}
