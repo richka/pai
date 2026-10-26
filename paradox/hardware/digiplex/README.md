@@ -111,6 +111,26 @@ rejected.
 - **Instant arm is reported as a full arm** (no stay bit), so Home Assistant's
   "night" mode is mapped to stay arm to keep `armed_home` meaningful.
 
+## Tested environment
+
+| | |
+|---|---|
+| Panel | Paradox Digiplex **DGP-848**, firmware build **A095** (software 4.13) |
+| Partitions | 2 — house (perimeter/stay arming) and garage |
+| Zones | 48 on board, 26 assigned, labels read from EEPROM |
+| Transport | ESP8266 (NodeMCU) running an ESPHome `uart_tcp` bridge (UART ↔ TCP), 19200 8N1 |
+| PAI connection | `IP_CONNECTION_BARE`, PC password `0000` |
+| PAI version | 3.9.0-dev, Python 3.15, Home Assistant OS (aarch64) |
+| Reference meter | battery 13.68 V, PSU/AUX 13.66 V — used for the calibration above |
+
+Notes:
+
+- The bridge adds latency (tens of milliseconds) and accepts a single TCP
+  client, which is enough for the polling driver; a direct serial connection
+  should behave the same or better.
+- The panel was exercised with real keypad actions: arming and disarming both
+  partitions, perimeter arming, entry/exit delays and a door contact opening.
+
 ## Testing
 
 - `tests/hardware/digiplex/test_parsers.py` — golden frames (checksums, INIT,
