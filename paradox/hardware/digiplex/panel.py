@@ -116,6 +116,10 @@ class Panel_DGP848(PanelBase):
             if message[0] >> 4 == 0x5:
                 return parsers.ReadRAMResponse.parse(message)
 
+            # 0x4 = MONITOR response (the panel echoes the command frame)
+            if message[0] >> 4 == 0x4:
+                return parsers.PerformPartitionAction.parse(message)
+
             # 0xE = event frames. We do not interpret them yet (offsets still
             # being confirmed) - just log the raw bytes so a single keypad
             # action reveals the real layout.
@@ -254,6 +258,41 @@ class Panel_DGP848(PanelBase):
 
         return result
 
-    # control_zones / control_partitions / control_outputs / send_panic /
-    # dump_memory stay NotImplementedError for now: control (0x40) needs live
-    # verification of the command values first (see ../protokolas.md).
+    # control_zones / control_outputs / send_panic / dump_memory stay
+    # NotImplementedError: the PGM/siren command set of this family is not
+    # documented yet (control of partitions is implemented above).
+
+    async def control_partitions(self, partitions: list, command: str) -> bool:
+        """Arm/disarm partitions via the MONITOR (0x40) frame.
+
+        The panel answers with an echo of the frame; an ErrorMessage (0x70)
+        means the command was rejected.
+        """
+        code = parsers.PARTITION_ACTION_COMMANDS.get(command)
+        if code is None:
+            logger.warning('Partition command "%s" is not supported', command)
+            return False
+
+        message = parsers.build_partition_action(
+            {int(partition): code for partition in partitions}
+        )
+        reply = await self.core.send_wait(
+            message=message,
+            reply_expected=[0x4, 0x7],
+            timeout=2.0,
+            retries=1,
+        )
+
+        if reply is None:
+            logger.warning('Partition command "%s" failed: no reply', command)
+            return False
+
+        if reply.fields.value.po.command == 0x7:
+            error = self.get_error_message(reply.fields.value.message)
+            logger.warning('Partition command "%s" rejected: %s', command, error)
+            return False
+
+        logger.info(
+            'Partition command "%s" accepted for partitions %s', command, partitions
+        )
+        return True

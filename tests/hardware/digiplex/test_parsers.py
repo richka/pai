@@ -253,3 +253,43 @@ def test_exit_delay_flag():
         _partition_block(house_arm=0x01, house_status=0x00)
     )
     assert parsed.partition_status[1]["exit_delay"] is False
+
+
+def test_build_partition_action_frame():
+    """MONITOR frame: 40 00 | P1:P2 | P3:P4 | P5:P6 | P7:P8, padded to 36."""
+    frame = parsers.build_partition_action({1: 0x06})  # disarm partition 1
+    assert len(frame) == 37
+    assert frame[0] == 0x40
+    assert frame[1] == 0x00
+    assert frame[2] == 0x60  # partition 1 is the high nibble, P2 (NOP) the low one
+    assert frame[3:6] == b"\x00\x00\x00"
+    assert sum(frame[:36]) % 256 == frame[36]
+
+
+def test_build_partition_action_second_partition():
+    frame = parsers.build_partition_action({2: 0x03})  # stay arm partition 2
+    assert frame[2] == 0x03  # P1 = 0, P2 = 3
+
+
+def test_build_partition_action_both_partitions():
+    frame = parsers.build_partition_action({1: 0x02, 2: 0x06})
+    assert frame[2] == 0x26  # P1 = 2 (arm), P2 = 6 (disarm)
+
+
+def test_partition_action_parser_accepts_the_echo():
+    """The panel answers a MONITOR command with an echo of the same frame."""
+    frame = parsers.build_partition_action({1: 0x02})
+    parsed = parsers.PerformPartitionAction.parse(frame)
+    assert parsed.fields.value.po.command == 0x4
+    assert parsed.fields.value.partitions == bytes((0x20, 0x00, 0x00, 0x00))
+
+
+def test_partition_action_command_map():
+    assert parsers.PARTITION_ACTION_COMMANDS["arm"] == 0x02
+    assert parsers.PARTITION_ACTION_COMMANDS["arm_stay"] == 0x03
+    # HA night maps to stay arm: INSTANT_ARM (0x4) is reported by the panel
+    # as a full arm, which would show as armed_away instead of armed_home.
+    assert parsers.PARTITION_ACTION_COMMANDS["arm_sleep"] == 0x03
+    assert parsers.PARTITION_ACTION_COMMANDS["force"] == 0x05
+    assert parsers.PARTITION_ACTION_COMMANDS["disarm"] == 0x06
+    assert parsers.PARTITION_ACTION_COMMANDS["beep"] == 0x08

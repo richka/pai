@@ -190,6 +190,74 @@ EventResponse = Struct(
 )
 
 
+# MONITOR (0x40): partition commands. One nibble per partition, packed two per
+# byte after a 0x00 pad:
+#
+#   40 00 | P1:P2 | P3:P4 | P5:P6 | P7:P8
+#
+# Command values (tonyrog/digiplex, cross-checked with
+# adumat/paradox-dgp-mqtt): NOP=0x0, FULL_ARM=0x2, STAY_ARM=0x3,
+# INSTANT_ARM=0x4, FORCE_ARM=0x5, DISARM=0x6, BEEP=0x8.
+#
+# No user code is sent: authority comes from the PC session (verified with the
+# other Digiplex implementations). The panel answers with an echo of the same
+# frame (command nibble 0x4) or an ErrorMessage (0x70).
+PARTITION_ACTION_COMMANDS = {
+    "arm": 0x2,  # full arm        -> armed_away
+    "arm_stay": 0x3,  # stay arm   -> panel reports the stay bit -> armed_home
+    # HA's "night" maps to the same stay arm: this panel reports INSTANT_ARM
+    # (0x4) as a full arm (no stay bit), which would show up as armed_away and
+    # confuse the night mode. Instant arm is therefore not exposed.
+    "arm_sleep": 0x3,
+    "force": 0x5,
+    "disarm": 0x6,
+    "beep": 0x8,
+}
+
+PerformPartitionAction = Struct(
+    "fields"
+    / RawCopy(
+        Struct(
+            "po"
+            / BitStruct(
+                "command" / Const(0x4, Nibble),
+                "status"
+                / Struct(
+                    "reserved" / Flag,
+                    "alarm_reporting_pending" / Flag,
+                    "Winload_connected" / Flag,
+                    "NeWare_connected" / Flag,
+                ),
+            ),
+            "_not_used0" / Padding(1),
+            "partitions" / Bytes(4),  # four packed nibble pairs
+            "_not_used1" / Padding(30),
+        )
+    ),
+    "checksum" / PacketChecksum(Bytes(1)),
+)
+
+
+def build_partition_action(partitions: dict) -> bytes:
+    """Build a MONITOR frame from ``{partition_number: command_nibble}``."""
+    nibbles = [0] * 8
+    for number, command in partitions.items():
+        number = int(number)
+        if 1 <= number <= 8:
+            nibbles[number - 1] = command & 0x0F
+
+    packed = bytes(
+        (
+            (nibbles[0] << 4) | nibbles[1],
+            (nibbles[2] << 4) | nibbles[3],
+            (nibbles[4] << 4) | nibbles[5],
+            (nibbles[6] << 4) | nibbles[7],
+        )
+    )
+    payload = bytes((0x40, 0x00)) + packed + bytes(30)
+    return payload + calculate_checksum(payload)
+
+
 def build_read_ram(address: int, count: int = 32, bus_address: int = 0) -> bytes:
     """Build a READ frame (count 1..32, 32 is encoded as 0)."""
     if not (1 <= count <= 32):
