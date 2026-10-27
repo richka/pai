@@ -237,42 +237,12 @@ class Paradox:
         the previous session and reconnection becomes impossible.
         """
         from paradox.hardware.digiplex import Panel_DGP848
-        from paradox.hardware.digiplex.parsers import StartCommunication
 
         self.panel = Panel_DGP848(self)
         self.connection.variable_message_length(self.panel.variable_message_length)
 
         try:
-            deadline = time.time() + 120
-            while True:
-                try:
-                    reply = await self.send_wait(
-                        StartCommunication,
-                        args=dict(source_id=0),
-                        reply_expected=[0x0, 0x7],
-                        retries=1,
-                    )
-                except asyncio.TimeoutError:
-                    reply = None
-
-                if reply is not None and reply.fields.value.po.command == 0x0:
-                    break
-
-                if reply is not None:
-                    logger.info(
-                        "Digiplex panel reports a busy session. Waiting 30s of "
-                        "line silence for the panel to release it"
-                    )
-                else:
-                    logger.info(
-                        "Digiplex panel did not reply. Waiting 30s before retry"
-                    )
-
-                if time.time() + 30 >= deadline:
-                    raise ConnectionError(
-                        "Panel did not release its previous session"
-                    )
-                await asyncio.sleep(30)
+            reply = await self._digiplex_wait_for_panel()
 
             if reply.fields.value.product_id not in (
                 "DIGIPLEX_v13",
@@ -284,27 +254,7 @@ class Paradox:
                     % reply.fields.value.product_id
                 )
 
-            self.panel = create_panel(self, reply)
-            self.connection.variable_message_length(
-                self.panel.variable_message_length
-            )
-            framer = self.panel.make_framer()
-            if framer is not None:
-                self.connection.set_framer(framer)
-
-            ps.sendMessage(
-                "panel_detected",
-                panel=DetectedPanel(
-                    product_id=reply.fields.value.product_id,
-                    model="Digiplex DGP",
-                    firmware_version="{}.{} build {:#06x}".format(
-                        reply.fields.value.firmware.version,
-                        reply.fields.value.firmware.revision,
-                        reply.fields.value.firmware_build,
-                    ),
-                    serial_number=hexlify(reply.fields.value.serial_number).decode(),
-                ),
-            )
+            self._digiplex_register_panel(reply)
 
             if not await self.panel.initialize_communication(cfg.PASSWORD):
                 raise ConnectionError("Failed to initialize communication")
@@ -314,10 +264,69 @@ class Paradox:
             return True
         except asyncio.TimeoutError:
             logger.error("Timeout while connecting to Digiplex panel")
-        except ConnectionError as e:
-            logger.error("Digiplex connect failed: %s", e)
+        except ConnectionError:
+            logger.exception("Digiplex connect failed")
         self.run_state = RunState.ERROR
         return False
+
+    async def _digiplex_wait_for_panel(self):
+        """Send StartCommunication until the panel accepts it (command 0x00).
+
+        A reply with another command means the panel is still busy with the
+        previous session; no reply means the frame was dropped. Both cases
+        need 30s of absolute line silence, otherwise the panel never releases
+        the old session.
+        """
+        from paradox.hardware.digiplex.parsers import StartCommunication
+
+        deadline = time.time() + 120
+        while True:
+            try:
+                reply = await self.send_wait(
+                    StartCommunication,
+                    args={"source_id": 0},
+                    reply_expected=[0x0, 0x7],
+                    retries=1,
+                )
+            except asyncio.TimeoutError:
+                reply = None
+
+            if reply is not None and reply.fields.value.po.command == 0x0:
+                return reply
+
+            if reply is None:
+                logger.info("Digiplex panel did not reply. Waiting 30s before retry")
+            else:
+                logger.info(
+                    "Digiplex panel reports a busy session. Waiting 30s of "
+                    "line silence for the panel to release it"
+                )
+
+            if time.time() + 30 >= deadline:
+                raise ConnectionError("Panel did not release its previous session")
+            await asyncio.sleep(30)
+
+    def _digiplex_register_panel(self, reply):
+        """Create the panel for the detected product and publish the device."""
+        self.panel = create_panel(self, reply)
+        self.connection.variable_message_length(self.panel.variable_message_length)
+        framer = self.panel.make_framer()
+        if framer is not None:
+            self.connection.set_framer(framer)
+
+        ps.sendMessage(
+            "panel_detected",
+            panel=DetectedPanel(
+                product_id=reply.fields.value.product_id,
+                model="Digiplex DGP",
+                firmware_version="{}.{} build {:#06x}".format(
+                    reply.fields.value.firmware.version,
+                    reply.fields.value.firmware.revision,
+                    reply.fields.value.firmware_build,
+                ),
+                serial_number=hexlify(reply.fields.value.serial_number).decode(),
+            ),
+        )
 
     async def connect(self) -> bool:
         if self.work_loop is None:

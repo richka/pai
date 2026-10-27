@@ -96,9 +96,11 @@ def test_build_read_ram_matches_golden():
 def test_build_read_ram_count_encoding():
     # count 32 is encoded as 0; count splits over count_hi/count_lo
     frame = parsers.build_read_ram(0x8000, 32)
-    assert frame[0] == 0x50 and frame[1] == 0x00
+    assert frame[0] == 0x50
+    assert frame[1] == 0x00
     frame = parsers.build_read_ram(0x8000, 1)
-    assert frame[0] == 0x50 and frame[1] == 0x80
+    assert frame[0] == 0x50
+    assert frame[1] == 0x80
     with pytest.raises(ValueError):
         parsers.build_read_ram(0x8000, 33)
 

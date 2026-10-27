@@ -221,41 +221,56 @@ class Panel_DGP848(PanelBase):
             raise StatusRequestException("No reply to status request: %#x" % nr)
 
         result = self.handle_status(reply, RAMDataParserMap)
+        if result is None:
+            return None
 
-        # Do not publish zones that were never assigned (no label)
-        if result is not None and self._named_zones:
-            for k in ("zone_open", "zone_tamper"):
-                if k in result:
-                    result[k] = {
-                        i: v for i, v in result[k].items() if i in self._named_zones
-                    }
+        self._keep_published_zones(result)
+        self._log_partition_changes(result)
+        return result
 
-            # Publish tamper only for zone types that really have a tamper
-            # switch (motion, glass break, siren/cabinet). Contacts and the
-            # fire detector do not, so their tamper entities would be noise.
-            if "zone_tamper" in result:
-                result["zone_tamper"] = {
-                    i: v
-                    for i, v in result["zone_tamper"].items()
-                    if publishes_tamper(self._zone_device_class.get(i, "motion"))
+    def _keep_published_zones(self, result):
+        """Publish only what the panel actually has.
+
+        Zones without an EEPROM label are not assigned, and tamper is only
+        reported for zone types that have a tamper switch (motion, glass
+        break, siren/cabinet); contacts and the fire detector would just add
+        noise.
+        """
+        if not self._named_zones:
+            return
+
+        for k in ("zone_open", "zone_tamper"):
+            if k in result:
+                result[k] = {
+                    i: v for i, v in result[k].items() if i in self._named_zones
                 }
 
-        # Log partition changes only when they happen, so the add-on log
-        # alone shows every arm/disarm without extra tooling.
-        if result is not None and "partition_status" in result:
-            partitions = {
-                key: (
-                    "disarmed"
-                    if not value.get("arm")
-                    else ("perimeter" if value.get("arm_stay") else "armed")
-                )
-                for key, value in result["partition_status"].items()
+        if "zone_tamper" in result:
+            result["zone_tamper"] = {
+                i: v
+                for i, v in result["zone_tamper"].items()
+                if publishes_tamper(self._zone_device_class.get(i, "motion"))
             }
-            if partitions != self._last_partitions:
-                logger.info("Digiplex: partitions %s", partitions)
-                self._last_partitions = partitions
 
-        return result
+    def _log_partition_changes(self, result):
+        """Log partition changes only when they happen, so the add-on log
+        alone shows every arm/disarm without extra tooling."""
+        if "partition_status" not in result:
+            return
+
+        partitions = {
+            key: self._partition_state(value)
+            for key, value in result["partition_status"].items()
+        }
+        if partitions != self._last_partitions:
+            logger.info("Digiplex: partitions %s", partitions)
+            self._last_partitions = partitions
+
+    @staticmethod
+    def _partition_state(value) -> str:
+        if not value.get("arm"):
+            return "disarmed"
+        return "perimeter" if value.get("arm_stay") else "armed"
 
     # control_zones / control_outputs / send_panic / dump_memory stay
     # NotImplementedError: the PGM/siren command set of this family is not
